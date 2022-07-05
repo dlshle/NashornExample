@@ -14,6 +14,13 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/*
+references:
+https://brianyoung.blog/2018/06/25/script-compilation-with-nashorn/
+https://stackoverflow.com/questions/26561292/how-make-java-8-nashorn-fast
+https://stackoverflow.com/questions/22752196/java-scripting-with-nashorn-jsr-223-pre-compilation
+https://www.baeldung.com/java-nashorn#language-extensions
+ */
 public class Main {
     static public class BoxInt {
         private int n;
