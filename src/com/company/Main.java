@@ -6,6 +6,8 @@ import javax.script.CompiledScript;
 import javax.script.Invocable;
 import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
+import javax.script.ScriptException;
+import java.text.NumberFormat;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -19,7 +21,7 @@ public class Main {
             this.n = n;
         }
 
-        public int getN() {
+        public int getValue() {
             return n;
         }
 
@@ -30,7 +32,7 @@ public class Main {
     }
 
     static public class FibCalculator {
-        private static final int CAP = 101;
+        private static final int CAP = 501;
 
         private int[] dp;
 
@@ -99,11 +101,16 @@ public class Main {
         }
     }
 
-    public static void main(String[] args) {
-        runWithoutFunction();
-        runWithFunction();
-        System.out.println("fib func avg: " + runFibFunNTimes(100));
-        System.out.println("fib binding avg: " + runFibBindingNTimes(100));
+    public static void main(String[] args) throws ScriptException {
+        // runWithoutFunction();
+        // runWithFunction();
+        System.out.println("----------------------------------------");
+        System.out.println("fib func avg: " + runFibFunNTimes(300));
+        System.out.println("----------------------------------------");
+        System.out.println("fib binding avg: " + runFibBindingNTimes(300));
+        System.out.println("----------------------------------------");
+        System.out.println("fib native avg: " + runFibNativeNTimes(300));
+        System.out.println("----------------------------------------");
     }
 
     private static void runWithoutFunction() {
@@ -145,7 +152,7 @@ public class Main {
         }
     }
 
-    /*
+    /* NOT SURE IF IT'S POSSIBLE TO RUN COMPILED FUNCTION WITH NASHORN
     private static void runWithCompiledFunction() {
         ScriptEngine engine = new ScriptEngineManager().getEngineByName("nashorn");
         String script = "function convert(x) { return  Packages."+BoxVal.class.getName()+".of(x);}";
@@ -160,56 +167,73 @@ public class Main {
     }
      */
 
-    private static double runFibFunNTimes(int n) {
+    private static double runFibNativeNTimes(int n) {
         long[] diffTimes = new long[n];
         AtomicInteger i = new AtomicInteger(0);
-        runNtimes(() -> diffTimes[i.getAndIncrement()] = measurePerformance(() -> runFibFunc(80)), n);
+        multipleRun(() -> diffTimes[i.getAndIncrement()] = measurePerformance(() -> new FibCalculator().get(500).getValue()), n);
         long tot = 0;
         for (int j = 0; j < n; j++) {
             tot += diffTimes[j];
         }
+        logSystemMetric();
         return tot / (n * 1.0);
     }
 
-    private static double runFibBindingNTimes(int n) {
-        long[] diffTimes = new long[n];
-        AtomicInteger i = new AtomicInteger(0);
-        runNtimes(() -> diffTimes[i.getAndIncrement()] = measurePerformance(() -> runFibBinding(80)), n);
-        long tot = 0;
-        for (int j = 0; j < n; j++) {
-            tot += diffTimes[j];
-        }
-        return tot / (n * 1.0);
-    }
-
-    private static void runFibFunc(int n) {
+    private static double runFibFunNTimes(int n) throws ScriptException {
         ScriptEngine engine = new ScriptEngineManager().getEngineByName("nashorn");
+        long[] diffTimes = new long[n];
+        AtomicInteger i = new AtomicInteger(0);
+        engine.eval("function fib(x) { return new "+FibCalculator.class.getName()+"().get(x); }");
+        // can not pass bindings to engine.eval if you want to execute pure function
+        multipleRun(() -> diffTimes[i.getAndIncrement()] = measurePerformance(() -> runFibFunc(engine, 500)), n);
+        long tot = 0;
+        for (int j = 0; j < n; j++) {
+            tot += diffTimes[j];
+        }
+        logSystemMetric();
+        return tot / (n * 1.0);
+    }
+
+    private static double runFibBindingNTimes(int n) throws ScriptException {
+        ScriptEngine engine = new ScriptEngineManager().getEngineByName("nashorn");
+        String script = "function calc(x) { return new " +FibCalculator.class.getName()+"().get(x);}; var a = calc(p);";
+        CompiledScript compiled = ((Compilable) engine).compile(script);
+        long[] diffTimes = new long[n];
+        AtomicInteger i = new AtomicInteger(0);
+        multipleRun(() -> diffTimes[i.getAndIncrement()] = measurePerformance(() -> runFibBinding(engine, compiled, 500)), n);
+        long tot = 0;
+        for (int j = 0; j < n; j++) {
+            tot += diffTimes[j];
+        }
+        logSystemMetric();
+        return tot / (n * 1.0);
+    }
+
+    private static void runFibFunc(ScriptEngine engine, int n) {
+        // ScriptEngine engine = new ScriptEngineManager().getEngineByName("nashorn");
         try {
-            engine.eval("function fib(x) { var fib = new "+FibCalculator.class.getName()+"(); return fib.get(x); }");
-            // can not pass bindings to engine.eval if you want to execute pure function
+            HashMap<String, String> ctx = new HashMap<>();
+            ctx.put("a", "b");
             Invocable invocable = (Invocable) engine;
-            ((BoxInt)invocable.invokeFunction("fib", n)).getN();
+            ((BoxInt)invocable.invokeFunction("fib", ctx, n)).getValue();
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    private static void runFibBinding(int n) {
-        ScriptEngine engine = new ScriptEngineManager().getEngineByName("nashorn");
-        String script = "function calc(x) { return new " +FibCalculator.class.getName()+"().get(x);}; var a = calc(p);";
+    private static void runFibBinding(ScriptEngine engine, CompiledScript compiled, int n) {
+        // ScriptEngine engine = new ScriptEngineManager().getEngineByName("nashorn");
         Bindings bindings = engine.createBindings();
         bindings.put("p", n);
         try {
-            CompiledScript compiled = ((Compilable) engine).compile(script);
             compiled.eval(bindings);
-            ((BoxInt)bindings.get("a")).getN();
-            // can not execute convert from compiled script because after the compilation of the script, no function can be found from the compiled script
+            ((BoxInt)bindings.get("a")).getValue();
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    private static void runNtimes(Runnable fn, int n) {
+    private static void multipleRun(Runnable fn, int n) {
         for (int i  = 0; i < n; i++) {
             fn.run();
         }
@@ -218,7 +242,23 @@ public class Main {
     private static long measurePerformance(Runnable fn) {
         Instant before = Instant.now();
         fn.run();
-        long diff = Instant.now().toEpochMilli() - before.toEpochMilli();
-        return diff;
+        return Instant.now().toEpochMilli() - before.toEpochMilli();
+    }
+    
+    private static void logSystemMetric() {
+        Runtime runtime = Runtime.getRuntime();
+
+        NumberFormat format = NumberFormat.getInstance();
+
+        StringBuilder sb = new StringBuilder();
+        long maxMemory = runtime.maxMemory();
+        long allocatedMemory = runtime.totalMemory();
+        long freeMemory = runtime.freeMemory();
+
+        sb.append("free memory: " + format.format(freeMemory / 1024) + "\n");
+        sb.append("allocated memory: " + format.format(allocatedMemory / 1024) + "\n");
+        sb.append("max memory: " + format.format(maxMemory / 1024) + "\n");
+        sb.append("total free memory: " + format.format((freeMemory + (maxMemory - allocatedMemory)) / 1024) + "\n");
+        System.out.println(sb);
     }
 }
