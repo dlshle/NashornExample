@@ -90,17 +90,6 @@ public class Main {
 
     private static void runWithFunction() {
         ScriptEngine engine = new ScriptEngineManager().getEngineByName("nashorn");
-        Map<String, String> map = new HashMap<>();
-        Box box1 = new Box(BoxVal.A, null);
-        Box box2 = new Box(BoxVal.B, null);
-        box1.setNested(box2);
-        map.put("a", "b");
-        Bindings bindings = engine.createBindings();
-        bindings.put("map", map);
-        bindings.put("greeting", "hi");
-        bindings.put("box1", box1);
-        bindings.put("box2", box2);
-        bindings.put("seed", 123);
         try {
             engine.eval("function convert(x) { return  Packages."+BoxVal.class.getName()+".of(x);}");
             // can not pass bindings to engine.eval if you want to execute pure function
