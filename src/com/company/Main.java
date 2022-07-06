@@ -8,6 +8,7 @@ import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
 import java.text.NumberFormat;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -22,6 +23,8 @@ https://stackoverflow.com/questions/22752196/java-scripting-with-nashorn-jsr-223
 https://www.baeldung.com/java-nashorn#language-extensions
  */
 public class Main {
+    private static String LARGE_STRING;
+
     static public class BoxInt {
         private int n;
         public BoxInt(int n) {
@@ -109,6 +112,10 @@ public class Main {
     }
 
     public static void main(String[] args) throws ScriptException {
+        LARGE_STRING = "";
+        for (int i = 0; i < 1000; i++) {
+            LARGE_STRING += "x";
+        }
         // runWithoutFunction();
         // runWithFunction();
         System.out.println("----------------------------------------");
@@ -117,6 +124,14 @@ public class Main {
         System.out.println("fib binding avg: " + runFibBindingNTimes(300));
         System.out.println("----------------------------------------");
         System.out.println("fib native avg: " + runFibNativeNTimes(300));
+        System.out.println("----------------------------------------");
+
+        System.out.println("----------------------------------------");
+        System.out.println("rev func avg: " + runReversalFuncNTimes(300));
+        System.out.println("----------------------------------------");
+        System.out.println("rev binding avg: " + runReversalBindingNTimes(300));
+        System.out.println("----------------------------------------");
+        System.out.println("rev native avg: " + runReversalNativeNTimes(300));
         System.out.println("----------------------------------------");
     }
 
@@ -174,15 +189,72 @@ public class Main {
     }
      */
 
+    private static String reversal(String s) {
+        char[] arr = s.toCharArray();
+        for (int i = 0; i < arr.length; i++) {
+            char t = arr[i];
+            arr[i] = arr[arr.length - i - 1];
+            arr[arr.length - i - 1] = t;
+        }
+        return String.valueOf(arr);
+    }
+
+    private static double runReversalNativeNTimes(int n) {
+        long[] diffTimes = new long[n];
+        AtomicInteger i = new AtomicInteger(0);
+        multipleRun(() -> diffTimes[i.getAndIncrement()] = measurePerformance(() -> reversal(LARGE_STRING)), n);
+        long tot = 0;
+        long med = 0;
+        Arrays.sort(diffTimes);
+        for (int j = 0; j < n; j++) {
+            if (j == n / 2) {
+                med = diffTimes[j];
+            }
+            tot += diffTimes[j];
+        }
+        logSystemMetric();
+        System.out.println("median: " + med);
+        return tot / (n * 1.0);
+    }
+
     private static double runFibNativeNTimes(int n) {
         long[] diffTimes = new long[n];
         AtomicInteger i = new AtomicInteger(0);
         multipleRun(() -> diffTimes[i.getAndIncrement()] = measurePerformance(() -> new FibCalculator().get(500).getValue()), n);
         long tot = 0;
+        long med = 0;
+        Arrays.sort(diffTimes);
         for (int j = 0; j < n; j++) {
+            if (j == n / 2) {
+                med = diffTimes[j];
+            }
             tot += diffTimes[j];
         }
         logSystemMetric();
+        System.out.println("median: " + med);
+        return tot / (n * 1.0);
+    }
+
+    private static double runReversalFuncNTimes(int n) throws ScriptException {
+        ScriptEngine engine = new ScriptEngineManager().getEngineByName("nashorn");
+        long[] diffTimes = new long[n];
+        AtomicInteger i = new AtomicInteger(0);
+        engine.eval("function reverse(x) { x = x.split(''); for (var i = 0; i < x.length / 2; i++) { var t = x[i]; x[i] = x[x.length - i - 1]; x[x.length - i - 1] = t; } return x.join(); }");
+        // can not pass bindings to engine.eval if you want to execute pure function
+        multipleRun(() -> diffTimes[i.getAndIncrement()] = measurePerformance(() -> runStringReversalFunc(engine, LARGE_STRING)), n);
+        // multipleRun(() -> diffTimes[i.getAndIncrement()] = measurePerformance(() -> runFibFunc(engine, 500)), n);
+        long tot = 0;
+        long med = 0;
+        Arrays.sort(diffTimes);
+        for (int j = 0; j < n; j++) {
+            if (j == n / 2) {
+                med = diffTimes[j];
+            }
+            tot += diffTimes[j];
+        }
+        logSystemMetric();
+        System.out.println("median: " + med);
+
         return tot / (n * 1.0);
     }
 
@@ -194,10 +266,39 @@ public class Main {
         // can not pass bindings to engine.eval if you want to execute pure function
         multipleRun(() -> diffTimes[i.getAndIncrement()] = measurePerformance(() -> runFibFunc(engine, 500)), n);
         long tot = 0;
+        long med = 0;
+        Arrays.sort(diffTimes);
         for (int j = 0; j < n; j++) {
+            if (j == n / 2) {
+                med = diffTimes[j];
+            }
             tot += diffTimes[j];
         }
         logSystemMetric();
+        System.out.println("median: " + med);
+
+        return tot / (n * 1.0);
+    }
+
+    private static double runReversalBindingNTimes(int n) throws ScriptException {
+        ScriptEngine engine = new ScriptEngineManager().getEngineByName("nashorn");
+        String script = "function reverse(x) { x = x.split(''); for (var i = 0; i < x.length / 2; i++) { var t = x[i]; x[i] = x[x.length - i - 1]; x[x.length - i - 1] = t; } return x.join(); } var a = reverse(p);";
+        CompiledScript compiled = ((Compilable) engine).compile(script);
+        long[] diffTimes = new long[n];
+        AtomicInteger i = new AtomicInteger(0);
+        multipleRun(() -> diffTimes[i.getAndIncrement()] = measurePerformance(() -> runStringReversalBinding(engine, compiled, LARGE_STRING)), n);
+        long tot = 0;
+        long med = 0;
+        Arrays.sort(diffTimes);
+        for (int j = 0; j < n; j++) {
+            if (j == n / 2) {
+                med = diffTimes[j];
+            }
+            tot += diffTimes[j];
+        }
+        logSystemMetric();
+        System.out.println("median: " + med);
+
         return tot / (n * 1.0);
     }
 
@@ -209,11 +310,30 @@ public class Main {
         AtomicInteger i = new AtomicInteger(0);
         multipleRun(() -> diffTimes[i.getAndIncrement()] = measurePerformance(() -> runFibBinding(engine, compiled, 500)), n);
         long tot = 0;
+        long med = 0;
+        Arrays.sort(diffTimes);
         for (int j = 0; j < n; j++) {
+            if (j == n / 2) {
+                med = diffTimes[j];
+            }
             tot += diffTimes[j];
         }
         logSystemMetric();
+        System.out.println("median: " + med);
+
         return tot / (n * 1.0);
+    }
+
+    private static void runStringReversalFunc(ScriptEngine engine, String original) {
+        // ScriptEngine engine = new ScriptEngineManager().getEngineByName("nashorn");
+        try {
+            HashMap<String, String> ctx = new HashMap<>();
+            ctx.put("a", "b");
+            Invocable invocable = (Invocable) engine;
+            String s = (String)invocable.invokeFunction("reverse", original);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private static void runFibFunc(ScriptEngine engine, int n) {
@@ -222,7 +342,19 @@ public class Main {
             HashMap<String, String> ctx = new HashMap<>();
             ctx.put("a", "b");
             Invocable invocable = (Invocable) engine;
-            ((BoxInt)invocable.invokeFunction("fib", ctx, n)).getValue();
+            ((BoxInt)invocable.invokeFunction("fib", n)).getValue();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void runStringReversalBinding(ScriptEngine engine, CompiledScript compiled, String original) {
+        // ScriptEngine engine = new ScriptEngineManager().getEngineByName("nashorn");
+        Bindings bindings = engine.createBindings();
+        bindings.put("p", original);
+        try {
+            compiled.eval(bindings);
+            String s = (String)bindings.get("a");
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -249,7 +381,7 @@ public class Main {
     private static long measurePerformance(Runnable fn) {
         Instant before = Instant.now();
         fn.run();
-        return Instant.now().toEpochMilli() - before.toEpochMilli();
+        return Duration.between(before, Instant.now()).toMillis();
     }
     
     private static void logSystemMetric() {
